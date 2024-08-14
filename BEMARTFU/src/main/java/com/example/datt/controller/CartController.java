@@ -1,47 +1,46 @@
 package com.example.datt.controller;
-
-import com.example.datt.entity.Cart;
-import com.example.datt.repository.CartDetailRepository;
-import com.example.datt.repository.CartRepository;
-import com.example.datt.repository.UserRepository;
+import com.example.datt.dto.CartDto;
+import com.example.datt.services.CartService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 
 @CrossOrigin("*")
     @RestController
     @RequestMapping("api/cart")
     public class CartController {
-        @Autowired
-        CartRepository cartRepository;
-
-        @Autowired
-        CartDetailRepository cartDetailRepository;
-
-        @Autowired
-        UserRepository userRepository;
-
-        @GetMapping("/user/{email}")
-        public ResponseEntity<Cart> getCartUser(@PathVariable("email") String email) {
-            if (!userRepository.existsByEmail(email)) {
-                return ResponseEntity.notFound().build();
-            }
-            return ResponseEntity.ok(cartRepository.findByUser(userRepository.findByEmail(email).get()));
+    @Autowired
+    CartService cartService;
+    @GetMapping("/user/{email}")
+    public ResponseEntity<ApiResponse> getCartUserEmail(@PathVariable("email") String email) {
+        if (!cartService.existsByEmail(email)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).
+                    body(new ApiResponse("Cart not found for the provided email", null));
         }
+        return cartService.getCartByEmail(email)
+                .map(cart -> ResponseEntity.ok(new ApiResponse("Cart found",cart))).
+                orElseGet(()-> ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiResponse("Cart not found", null)));
+    }
         @GetMapping()
-        public ResponseEntity<List<Cart>> getCartAll() {
-            return ResponseEntity.ok(cartRepository.findAll());
+        public ResponseEntity<ApiResponse> getCartAll() {
+        List<CartDto> cartDtos = cartService.getAllCart();
+            return ResponseEntity.ok(new ApiResponse("Cart list has been found",cartDtos));
         }
 
         @PutMapping("/user/{email}")
-        public ResponseEntity<Cart> putCartUser(@PathVariable("email") String email, @RequestBody Cart cart) {
-            if (!userRepository.existsByEmail(email)) {
-                return ResponseEntity.notFound().build();
+        public ResponseEntity<ApiResponse> putCartUser(@PathVariable("email") String email, @RequestBody CartDto cartDto) {
+            if (!cartService.existsByEmail(email)) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).
+                        body(new ApiResponse("Cart not found for the provided email",null));
             }
-            return ResponseEntity.ok(cartRepository.save(cart));
-        }
-
+            if (!email.equals(cartDto.getUserDto().getEmail())) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiResponse("Email in URL does not match email in request body",null));
+            }
+            return cartService.updateCartByEmail(email, cartDto)
+                    .map(updateCart -> ResponseEntity.ok(new ApiResponse("Cart updated successfully", updateCart)))
+                    .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiResponse("Cart not found", null)));
+            }
     }
 
