@@ -1,14 +1,19 @@
 package com.example.datt.controller;
+import com.example.datt.dto.CartDetailDto;
 import com.example.datt.entity.CartDetail;
 import com.example.datt.entity.Product;
 import com.example.datt.repository.CartDetailRepository;
 import com.example.datt.repository.CartRepository;
 import com.example.datt.repository.ProductRepository;
+import com.example.datt.services.CartDetailService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
-    @CrossOrigin("*")
+import java.util.Optional;
+
+@CrossOrigin("*")
     @RestController
     @RequestMapping("api/cartDetail")
     public class CartDetailsController {
@@ -21,50 +26,66 @@ import java.util.List;
 
         @Autowired
         ProductRepository productRepository;
+        @Autowired
+        CartDetailService cartDetailService;
+
 
         @GetMapping("cart/{id}")
-        public ResponseEntity<List<CartDetail>> getByCartId(@PathVariable("id") Long id) {
-            if (!cartRepository.existsById(id)) {
-                return ResponseEntity.notFound().build();
+        public ResponseEntity<ApiResponse> getAllCartDetailsByCartId(@PathVariable("id") Long id) {
+            if (id == null || id <= 0) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(new ApiResponse("Invalid cart ID: " + id, null));
             }
-            return ResponseEntity.ok(cartDetailRepository.findByCart(cartRepository.findById(id).get()));
+            if(!cartRepository.existsById(id)){
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).
+                        body(new ApiResponse("Cart not found with id:" +id ,null));
+            }
+         List<CartDetailDto> cartDetailDtos = cartDetailService.getAllCartDetailsByCartId(id);
+         return ResponseEntity.ok(new ApiResponse("Cart details retrieved successfully",cartDetailDtos));
         }
 
-        @RequestMapping(value = "{id}", method = RequestMethod.GET)
-        public ResponseEntity<CartDetail> getOne(@PathVariable("id") Long id) {
+
+
+        @GetMapping("{id}")
+        public ResponseEntity<ApiResponse> getCartDetailById(@PathVariable("id") Long id) {
             if (!cartDetailRepository.existsById(id)) {
-                return ResponseEntity.notFound().build();
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).
+                        body(new ApiResponse("CartDetail not found with id:" +id ,null));
             }
-            return ResponseEntity.ok(cartDetailRepository.findById(id).get());
-        }
+            return cartDetailService.getCartDetailById(id)
+                    .map(cartDetail -> ResponseEntity.ok(new ApiResponse("Cart detail retrieved successfully",cartDetail)))
+                    .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).
+                            body(new ApiResponse("Cart detail not found", null)));
 
+        }
         @PostMapping()
-        public ResponseEntity<CartDetail> post(@RequestBody CartDetail detail) {
-            if (!cartRepository.existsById(detail.getCart().getCartId())) {
-                return ResponseEntity.notFound().build();
+        public ResponseEntity<ApiResponse> postCartDetail(@RequestBody CartDetailDto detailDto) {
+            //Kiểm tra Cart có tồn tại trong CSDL hay không
+            if (!cartRepository.existsById(detailDto.getCartDto().getCartId())) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(new ApiResponse("Cart not found with id:" ,null));
             }
-            boolean check = false;
-            List<Product> listProduct = productRepository.findByStatusTrue();
-            Product product = productRepository.findByProductIdAndStatusTrue(detail.getProduct().getProductId());
-            for (Product p : listProduct) {
-                if (p.getProductId() == product.getProductId()) {
-                    check = true;
-                }
+            //Kiểm tra Product có tồn tại trong sản phẩm hay không
+            Long productId = detailDto.getProductDto().getProductId();
+            if(!cartDetailService.productIsValid(productId)){
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(new ApiResponse("Product not found or inactive with id:",null));
             }
-            ;
-            if (!check) {
-                return ResponseEntity.notFound().build();
+
+            //Tìm kiếm detailId đã tồn tại hay chưa, nếu tồn tại thì update còn không thì thì add
+            Optional<CartDetailDto> existingCartDetail = cartDetailService.getCartDetailById(detailDto.getCartDetailId());
+            String message;
+            CartDetailDto saveDetailDto ;
+            if (existingCartDetail.isPresent()) {
+                // Cập nhật bản ghi nếu đã tồn tại
+                saveDetailDto = cartDetailService.saveOrUpdateCartDetail(detailDto);
+                message = "Updated CartDetail";
+            } else {
+                // Thêm mới bản ghi nếu không tìm thấy
+                saveDetailDto = cartDetailService.saveOrUpdateCartDetail(detailDto);
+                message = "Added new CartDetail";
             }
-            List<CartDetail> listD = cartDetailRepository
-                    .findByCart(cartRepository.findById(detail.getCart().getCartId()).get());
-            for (CartDetail item : listD) {
-                if (item.getProduct().getProductId() == detail.getProduct().getProductId()) {
-                    item.setQuantity(item.getQuantity() + 1);
-                    item.setPrice(item.getPrice() + detail.getPrice());
-                    return ResponseEntity.ok(cartDetailRepository.save(item));
-                }
-            }
-            return ResponseEntity.ok(cartDetailRepository.save(detail));
+            return ResponseEntity.ok(new ApiResponse(message,saveDetailDto));
         }
 
         @PutMapping()
