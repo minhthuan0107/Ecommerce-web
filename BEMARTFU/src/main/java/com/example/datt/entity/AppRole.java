@@ -26,12 +26,5 @@ public class AppRole implements Serializable {
 	@Column(length = 20)
 	public ERole name;
 
-	@SpringBootApplication
-	public static class DattApplication {
 
-		public static void main(String[] args) {
-			SpringApplication.run(DattApplication.class, args);
-		}
-
-	}
 }
